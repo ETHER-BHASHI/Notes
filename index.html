@@ -2,143 +2,107 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PikaBrooch BLE Companion</title>
+  <title>PikaBrooch Bluetooth AI Companion</title>
   <style>
-    body { font-family: -apple-system, sans-serif; background: #121212; color: #fff; text-align: center; padding: 18px; margin: 0; }
-    .card { background: #1e1e1e; border-radius: 16px; padding: 16px; margin-bottom: 16px; border: 1px solid #333; }
-    h2 { color: #ffe000; margin-top: 0; }
-    button { background: #ffe000; color: #000; border: none; padding: 14px 20px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; margin: 6px 0; cursor: pointer; }
+    body { font-family: system-ui, sans-serif; background: #0f0f12; color: #fff; padding: 18px; max-width: 480px; margin: auto; text-align: center; }
+    .card { background: #1c1c22; border-radius: 16px; padding: 18px; margin-bottom: 16px; border: 1px solid #2e2e38; }
+    h2 { color: #ffe000; margin: 0 0 10px 0; }
+    button { background: #ffe000; color: #000; border: none; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: 700; width: 100%; margin: 6px 0; cursor: pointer; }
     button.ble { background: #0a84ff; color: #fff; }
-    button.active { background: #ff3b30; color: #fff; }
-    button.secondary { background: #2c2c2e; color: #fff; }
-    textarea { width: 92%; height: 150px; background: #111; color: #0f0; border: 1px solid #444; border-radius: 10px; padding: 10px; font-size: 15px; }
-    .status { font-size: 14px; color: #aaa; margin: 8px 0; }
+    button.listening { background: #ff3b30; color: #fff; }
+    button.sec { background: #2c2c35; color: #fff; font-size: 14px; padding: 12px; }
+    textarea { width: 93%; height: 150px; background: #111; color: #4af626; border: 1px solid #333; border-radius: 10px; padding: 10px; font-size: 14px; margin-top: 8px; }
+    .status { font-size: 14px; color: #00ffcc; margin: 8px 0; font-weight: bold; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h2>⚡ PikaBrooch BLE</h2>
-    <div id="bleStatus" class="status">Disconnected</div>
-    <button class="ble" onclick="connectBLE()">🔵 1. Connect to PikaBrooch (BLE)</button>
-    <button class="secondary" onclick="sendShock()">⚡ 2. Test Manual Shock + "Hello!"</button>
-    <button id="micBtn" onclick="toggleMic()">🎙️ 3. Auto-Listen (Or use Keyboard Mic below)</button>
+    <h2>⚡ PikaBrooch BLE Companion</h2>
+    <div id="bleStatus" class="status">Not Connected</div>
+    <button class="ble" onclick="connectBLE()">🔵 1. Connect Bluetooth to PikaBrooch</button>
+    <button onclick="sendShock()">⚡ 2. Manual Shock + "Hello!" Test</button>
+    <button id="micBtn" class="sec" onclick="toggleMic()">🎙️ 3. Start Voice Listening ("Hi / Hello")</button>
+    <div id="heard" style="font-size:13px;color:#aaa;margin-top:6px">Mic: Idle</div>
   </div>
 
   <div class="card">
-    <h3>📝 Live Networking Notes</h3>
-    <div class="status">💡 On iPhone/Bluefy: Tap box below + tap 🎙️ on iPhone keyboard! Saying "Hi" or "Hello" auto-triggers Pikachu!</div>
-    <textarea id="notes" oninput="checkTextForTrigger(this.value)" placeholder="Tap here and press the iPhone keyboard microphone icon to transcribe live..."></textarea>
-    <button class="secondary" onclick="downloadNotes()">💾 Save Meeting Notes (.txt)</button>
+    <h3 style="margin:0">📝 Live Meeting Transcript</h3>
+    <textarea id="notes" placeholder="Auto-transcribed conversation & notes appear here..."></textarea>
+    <button class="sec" onclick="saveNotes()">💾 Download Notes (.txt)</button>
   </div>
 
-  <script>
-    const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-    const CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
-    let broochChar = null;
-    let listening = false;
-    let recognition;
-    let lastTriggerCount = 0;
+<script>
+  let bleChar = null;
+  let rec = null, active = false;
+  const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  const CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
-    async function connectBLE() {
-      try {
-        if (!navigator.bluetooth) {
-          document.getElementById('bleStatus').innerText = "❌ Open this link inside the Bluefy app on iOS!";
-          return;
-        }
-        document.getElementById('bleStatus').innerText = "Scanning... Select 'PikaBrooch' from popup!";
-        
-        // iOS Bluefy compatible scan filter
-        const device = await navigator.bluetooth.requestDevice({
-          filters:[{services: [SERVICE_UUID] }]
-        });
-
-        document.getElementById('bleStatus').innerText = "Connecting to " + (device.name || "device") + "...";
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(SERVICE_UUID);
-        broochChar = await service.getCharacteristic(CHAR_UUID);
-        document.getElementById('bleStatus').innerText = "✅ Connected to PikaBrooch!";
-      } catch (err) {
-        document.getElementById('bleStatus').innerText = "BLE Error: " + err.message;
-      }
+  async function connectBLE() {
+    try {
+      document.getElementById('bleStatus').innerText = "Scanning for PikaBrooch...";
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [{ name: 'PikaBrooch' }],
+        optionalServices: [SERVICE_UUID]
+      });
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      bleChar = await service.getCharacteristic(CHAR_UUID);
+      document.getElementById('bleStatus').innerText = "✅ Connected to PikaBrooch!";
+    } catch (err) {
+      document.getElementById('bleStatus').innerText = "❌ Connection cancelled or failed";
+      alert("Make sure Bluetooth is ON and you are using Google Chrome or Edge! (" + err + ")");
     }
+  }
 
-    async function sendShock() {
-      if (!broochChar) {
-        document.getElementById('bleStatus').innerText = "⚠️ Tap '1. Connect to PikaBrooch' first!";
-        return;
-      }
-      try {
-        const encoder = new TextEncoder();
-        if (broochChar.writeValueWithoutResponse) {
-          await broochChar.writeValueWithoutResponse(encoder.encode("HI"));
-        } else {
-          await broochChar.writeValue(encoder.encode("HI"));
-        }
-        document.getElementById('bleStatus').innerText = "⚡ Sent Shock + Hello! to Brooch!";
-      } catch (e) {
-        document.getElementById('bleStatus').innerText = "Send error: " + e.message;
-      }
-    }
+  async function sendShock() {
+    if (!bleChar) return alert("Click '1. Connect Bluetooth' first!");
+    try {
+      await bleChar.writeValue(new TextEncoder().encode("H"));
+    } catch (e) { console.log(e); }
+  }
 
-    // Watches the text box when using iPhone Keyboard Dictation!
-    function checkTextForTrigger(text) {
-      const matches = text.toLowerCase().match(/\b(hi|hello|hey|pikachu|namaste)\b/g);
-      const count = matches ? matches.length : 0;
-      if (count > lastTriggerCount) {
-        lastTriggerCount = count;
-        sendShock();
-      }
-    }
-
-    function toggleMic() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        // Bluefy on iOS blocks webkitSpeechRecognition — focus the textarea so user can tap iOS keyboard mic!
-        document.getElementById('bleStatus').innerText = "🎙️ Tap the Microphone icon at the bottom-right of your iPhone keyboard!";
-        document.getElementById('notes').focus();
-        return;
-      }
-      if (!recognition) {
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = (event) => {
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            let text = event.results[i][0].transcript.toLowerCase();
-            if (text.includes('hi') || text.includes('hello') || text.includes('hey') || text.includes('pikachu')) {
-              sendShock();
-            }
-            if (event.results[i].isFinal) {
-              const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-              document.getElementById('notes').value += `[${time}] ` + event.results[i][0].transcript.trim() + "\n";
-            }
+  function toggleMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return alert("Please open this file in Google Chrome!");
+    if (!rec) {
+      rec = new SR();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+      rec.onresult = (e) => {
+        let cur = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          let txt = e.results[i][0].transcript.toLowerCase();
+          cur = txt;
+          if (txt.includes('hi') || txt.includes('hello') || txt.includes('hey') || txt.includes('pikachu')) {
+            sendShock();
           }
-        };
-        recognition.onend = () => { if (listening) recognition.start(); };
-      }
-
-      if (!listening) {
-        recognition.start();
-        listening = true;
-        document.getElementById('micBtn').innerText = "🛑 Listening Live (Tap to Stop)";
-        document.getElementById('micBtn').classList.add('active');
-      } else {
-        listening = false;
-        recognition.stop();
-        document.getElementById('micBtn').innerText = "🎙️ 3. Auto-Listen";
-        document.getElementById('micBtn').classList.remove('active');
-      }
+          if (e.results[i].isFinal) {
+            let t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            document.getElementById('notes').value += `[${t}] ` + e.results[i][0].transcript.trim() + "\n";
+          }
+        }
+        document.getElementById('heard').innerText = "Heard: " + cur;
+      };
+      rec.onend = () => { if (active) rec.start(); };
     }
-
-    function downloadNotes() {
-      const blob = new Blob([document.getElementById('notes').value], {type: "text/plain"});
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "Networking_Notes.txt";
-      a.click();
+    if (!active) {
+      rec.start(); active = true;
+      document.getElementById('micBtn').innerText = "🛑 Listening Live... (Say 'Hello!')";
+      document.getElementById('micBtn').classList.add('listening');
+    } else {
+      active = false; rec.stop();
+      document.getElementById('micBtn').innerText = "🎙️ 3. Start Voice Listening ('Hi / Hello')";
+      document.getElementById('micBtn').classList.remove('listening');
     }
-  </script>
+  }
+
+  function saveNotes() {
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([document.getElementById('notes').value], {type:'text/plain'}));
+    a.download = 'Networking_Notes.txt';
+    a.click();
+  }
+</script>
 </body>
 </html>
