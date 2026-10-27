@@ -37,20 +37,19 @@
   const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
   const CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
-  async function connectBLE() {
+async function connectBLE() {
     try {
       document.getElementById('bleStatus').innerText = "Scanning for PikaBrooch...";
       const device = await navigator.bluetooth.requestDevice({
-        filters: [{ name: 'PikaBrooch' }],
+        acceptAllDevices: true,
         optionalServices: [SERVICE_UUID]
       });
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(SERVICE_UUID);
       bleChar = await service.getCharacteristic(CHAR_UUID);
-      document.getElementById('bleStatus').innerText = "✅ Connected to PikaBrooch!";
+      document.getElementById('bleStatus').innerText = "✅ Connected to " + (device.name || "PikaBrooch") + "!";
     } catch (err) {
-      document.getElementById('bleStatus').innerText = "❌ Connection cancelled or failed";
-      alert("Make sure Bluetooth is ON and you are using Google Chrome or Edge! (" + err + ")");
+      document.getElementById('bleStatus').innerText = "❌ Error: " + err;
     }
   }
 
