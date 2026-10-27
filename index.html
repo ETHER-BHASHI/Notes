@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PikaBrooch BLE Companion</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #121212; color: #fff; text-align: center; padding: 18px; margin: 0; }
+    .card { background: #1e1e1e; border-radius: 16px; padding: 16px; margin-bottom: 16px; border: 1px solid #333; }
+    h2 { color: #ffe000; margin-top: 0; }
+    button { background: #ffe000; color: #000; border: none; padding: 14px 20px; border-radius: 12px; font-size: 16px; font-weight: bold; width: 100%; margin: 6px 0; cursor: pointer; }
+    button.ble { background: #0a84ff; color: #fff; }
+    button.active { background: #ff3b30; color: #fff; }
+    button.secondary { background: #2c2c2e; color: #fff; }
+    textarea { width: 92%; height: 150px; background: #111; color: #0f0; border: 1px solid #444; border-radius: 10px; padding: 10px; font-size: 14px; }
+    .status { font-size: 14px; color: #aaa; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>⚡ PikaBrooch BLE</h2>
+    <div id="bleStatus" class="status">Disconnected</div>
+    <button class="ble" onclick="connectBLE()">🔵 1. Connect to PikaBrooch (BLE)</button>
+    <button id="micBtn" onclick="toggleMic()">🎙️ 2. Start Listening for "Hi / Hello"</button>
+    <button class="secondary" onclick="sendShock()">⚡ Manual Shock + "Hello!" Test</button>
+  </div>
+
+  <div class="card">
+    <h3>📝 Live Networking Notes</h3>
+    <textarea id="notes" placeholder="Conversation transcript will appear here..."></textarea>
+    <button class="secondary" onclick="downloadNotes()">💾 Save Meeting Notes (.txt)</button>
+  </div>
+
+  <script>
+    const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+    const CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+    let broochChar = null;
+    let listening = false;
+    let recognition;
+
+    async function connectBLE() {
+      try {
+        document.getElementById('bleStatus').innerText = "Scanning for PikaBrooch...";
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: 'PikaBrooch' }],
+          optionalServices: [SERVICE_UUID]
+        });
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        broochChar = await service.getCharacteristic(CHAR_UUID);
+        document.getElementById('bleStatus').innerText = "✅ Connected to PikaBrooch via BLE!";
+      } catch (err) {
+        document.getElementById('bleStatus').innerText = "BLE Error: " + err.message;
+      }
+    }
+
+    async function sendShock() {
+      if (!broochChar) {
+        alert("Tap 'Connect to PikaBrooch (BLE)' first!");
+        return;
+      }
+      try {
+        const encoder = new TextEncoder();
+        await broochChar.writeValue(encoder.encode("HI"));
+      } catch (e) {
+        console.log("BLE Write error:", e);
+      }
+    }
+
+    function toggleMic() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Use Chrome on Android/Desktop for Web Bluetooth + Speech Recognition!");
+        return;
+      }
+      if (!recognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            let text = event.results[i][0].transcript.toLowerCase();
+            if (text.includes('hi') || text.includes('hello') || text.includes('hey') || text.includes('pikachu')) {
+              sendShock();
+            }
+            if (event.results[i].isFinal) {
+              const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+              document.getElementById('notes').value += `[${time}] ` + event.results[i][0].transcript.trim() + "\n";
+            } else {
+              interim += text;
+            }
+          }
+        };
+        recognition.onend = () => { if (listening) recognition.start(); };
+      }
+
+      if (!listening) {
+        recognition.start();
+        listening = true;
+        document.getElementById('micBtn').innerText = "🛑 Listening Live (Tap to Stop)";
+        document.getElementById('micBtn').classList.add('active');
+      } else {
+        listening = false;
+        recognition.stop();
+        document.getElementById('micBtn').innerText = "🎙️ 2. Start Listening for 'Hi / Hello'";
+        document.getElementById('micBtn').classList.remove('active');
+      }
+    }
+
+    function downloadNotes() {
+      const blob = new Blob([document.getElementById('notes').value], {type: "text/plain"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "Networking_Notes.txt";
+      a.click();
+    }
+  </script>
+</body>
+</html>
