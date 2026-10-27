@@ -49,8 +49,7 @@
         
         // iOS Bluefy compatible scan filter
         const device = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [SERVICE_UUID]
+          filters:[{services: [SERVICE_UUID] }]
         });
 
         document.getElementById('bleStatus').innerText = "Connecting to " + (device.name || "device") + "...";
